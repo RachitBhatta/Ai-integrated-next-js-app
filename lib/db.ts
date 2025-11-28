@@ -1,13 +1,11 @@
 import {MongoClient,Db,MongoClientOptions} from 'mongodb';
 
+
 const mongodb_url=process.env.MONGODB_URL;
-if(!mongodb_url){
-    throw new Error("Please Add MONGODB URL to .env file");
-}
 
 const options:MongoClientOptions={
     //Optimised Pool Size
-    maxPoolSize:1,
+    maxPoolSize:10,
     minPoolSize:0,
 
     //For critical timeout due to cold starts
@@ -34,25 +32,22 @@ const options:MongoClientOptions={
     var _mongoPromise:Promise<MongoClient>| undefined;
 }
 
-let cachedClient:MongoClient|null=null;
+
 let cachedDb:Db|null=null;
 
 
 async function getMongoClient():Promise<MongoClient>{
-    if(global._mongoClient){
-        try {
-            await global._mongoClient.db().admin().ping();
-            return global._mongoClient;
-        } catch (error) {
-            console.warn("Cached Client Failed Ping ,Reconnectiong ...");
-            global._mongoClient=undefined;
-            global._mongoPromise=undefined;
-        }
+    if(!mongodb_url){
+    throw new Error("Please Add MONGODB URL to .env file");
+    }
+    if(global._mongoClient){ 
+        return global._mongoClient;
     }
     //Create or reuse connection promise
     if(!global._mongoPromise){
         const client=new MongoClient(mongodb_url,options);
-        global._mongoPromise=client.connect();
+        const connectPromise=client.connect();
+        global._mongoPromise=connectPromise;
     }
     try {
         global._mongoClient=await global._mongoPromise;
@@ -81,6 +76,9 @@ function extractDbNameFromUrl(connectionUrl:string):string | null{
     }
 }
 export async function connectDB(dbName?:string): Promise<Db>{
+    if(!mongodb_url){
+    throw new Error("Please Add MONGODB URL to .env file");
+    }
     try {
         const client = await getMongoClient();
         
@@ -94,7 +92,7 @@ export async function connectDB(dbName?:string): Promise<Db>{
         }
         return cachedDb
     } catch (error) {
-        throw new Error(`Failed to connect to database.,${error}`)
+        throw new Error(`Failed to connect to database : ${error}`)
     }
 }
 
@@ -130,7 +128,7 @@ export async function getConnectionStatus(){
     } catch (error) {
         return{
             connected:false,
-            error:error instanceof Error?error.message:"Unknown Error";
+            error:error instanceof Error?error.message:"Unknown Error"
         };
     }
 }
@@ -141,7 +139,7 @@ export async function getConnectionStatus(){
 export async function closeConnection():Promise<void>{
     try {
         if(global._mongoClient){
-            global._mongoClient.close();
+            await global._mongoClient.close();
             global._mongoClient=undefined;
             global._mongoPromise=undefined;
             cachedDb=null;
